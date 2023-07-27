@@ -42,8 +42,10 @@ pub enum Payload {
         data_hash: [u8; 32],
         args: MetadataArgs,
     },
-    SetAndVerifyCollection {
+    CollectionVerification {
         collection: Pubkey,
+        args: MetadataArgs,
+        verify: bool,
     },
 }
 //TODO add more of the parsing here to minimize program transformer code
@@ -195,18 +197,15 @@ impl ProgramParser for BubblegumParser {
                             Some(build_creator_verification_payload(keys, ix_data, true)?);
                     }
                     InstructionName::UnverifyCreator => {
-                        let payload = build_creator_verification_payload(keys, ix_data, false)?;
-                        b_inst.payload = Some(payload);
+                        b_inst.payload =
+                            Some(build_creator_verification_payload(keys, ix_data, false)?);
                     }
-                    // We don't extract any additional info w.r.t. verify and unverify
-                    // collection ops for now.
-                    InstructionName::SetAndVerifyCollection => {
-                        // Deserializing this to get to the second argument encoded in the slice,
-                        // which is the collection address. Is there a (safe) way to get to that
-                        // directly?
-                        let _args: MetadataArgs = MetadataArgs::try_from_slice(ix_data)?;
-                        let collection: Pubkey = Pubkey::try_from_slice(ix_data)?;
-                        b_inst.payload = Some(Payload::SetAndVerifyCollection { collection });
+                    InstructionName::VerifyCollection | InstructionName::SetAndVerifyCollection => {
+                        b_inst.payload = Some(build_collection_verification_payload(ix_data)?);
+                    }
+                    InstructionName::UnverifyCollection => {
+                        b_inst.payload =
+                            Some(build_collection_unverification_payload(keys, ix_data)?);
                     }
                     InstructionName::Unknown => {}
                     _ => {}
@@ -250,5 +249,58 @@ fn build_creator_verification_payload(
         creator_hash,
         data_hash,
         args,
+    })
+}
+
+// See Bubblegum for offsets and positions:
+// https://github.com/metaplex-foundation/mpl-bubblegum/blob/main/programs/bubblegum/README.md#-verify_collection-unverify_collection-and-set_and_verify_collection
+// Note: Collection from the args is used to update the collection in Bubblegum, so use it as the source of truth (instead of collection via accounts).
+fn build_collection_verification_payload(ix_data: &[u8]) -> Result<Payload, BlockbusterError> {
+    let metadata_offset = 108;
+    let collection_byte_size = 32;
+    let metadata_byte_end = ix_data.len() - collection_byte_size;
+
+    // Ensure data is valid.
+    if ix_data.len() < metadata_offset + collection_byte_size {
+        return Err(BlockbusterError::InstructionParsingError);
+    }
+
+    let args_raw = ix_data[metadata_offset..metadata_byte_end].to_vec();
+    let args = MetadataArgs::try_from_slice(&args_raw)?;
+    let collection_raw = ix_data[metadata_byte_end..].to_vec();
+    let collection: Pubkey = Pubkey::try_from_slice(&collection_raw)?;
+
+    Ok(Payload::CollectionVerification {
+        collection,
+        args,
+        verify: true,
+    })
+}
+
+// See Bubblegum for offsets and positions:
+// https://github.com/metaplex-foundation/mpl-bubblegum/blob/main/programs/bubblegum/README.md#-verify_collection-unverify_collection-and-set_and_verify_collection
+// NOTE: Unverfication does not include collection. This needs to be fixed in the README.
+fn build_collection_unverification_payload(
+    keys: &[plerkle_serialization::Pubkey],
+    ix_data: &[u8],
+) -> Result<Payload, BlockbusterError> {
+    let collection_index = 8;
+    let metadata_offset = 108;
+    if ix_data.len() < metadata_offset {
+        return Err(BlockbusterError::InstructionParsingError);
+    }
+
+    let args_raw = ix_data[metadata_offset..].to_vec();
+    let args = MetadataArgs::try_from_slice(&args_raw)?;
+    let collection_raw = keys
+        .get(collection_index)
+        .ok_or(BlockbusterError::InstructionParsingError)?
+        .0;
+    let collection: Pubkey = Pubkey::try_from_slice(&collection_raw)?;
+
+    Ok(Payload::CollectionVerification {
+        collection,
+        args,
+        verify: false,
     })
 }
