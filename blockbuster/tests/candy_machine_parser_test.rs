@@ -149,10 +149,13 @@ fn test_zero_length_data_fails() {
     let mut fbb = FlatBufferBuilder::new();
     let account_info =
         build_random_account_update(&mut fbb, data).expect("Could not build account update");
+    let account_data = account_info
+        .data()
+        .expect("Failed to deserialize account data");
 
     // Use `CandyMachineParser` to parse the account update.
     let subject = CandyMachineParser {};
-    let result = subject.handle_account(&account_info);
+    let result = subject.handle_account(account_data.bytes());
 
     // Validate expected error.
     assert!(result.is_err());
@@ -176,10 +179,13 @@ fn test_unknown_discriminator_fails() {
     let mut fbb = FlatBufferBuilder::new();
     let account_info =
         build_random_account_update(&mut fbb, &data).expect("Could not build account update");
+    let account_data = account_info
+        .data()
+        .expect("Failed to deserialize account data");
 
     // Use `CandyMachineParser` to parse the account update.
     let subject = CandyMachineParser {};
-    let result = subject.handle_account(&account_info);
+    let result = subject.handle_account(account_data.bytes());
 
     // Validate expected error.
     assert!(result.is_err());
@@ -206,10 +212,13 @@ fn test_basic_success_parsing_candy_machine_account() {
     let mut fbb = FlatBufferBuilder::new();
     let account_info =
         build_random_account_update(&mut fbb, &data).expect("Could not build account update");
+    let account_data = account_info
+        .data()
+        .expect("Failed to deserialize account data");
 
     // Use `CandyMachineParser` to parse the account update.
     let subject = CandyMachineParser {};
-    let result = subject.handle_account(&account_info);
+    let result = subject.handle_account(account_data.bytes());
     assert!(result.is_ok());
 
     // Check `ProgramParseResult` and make sure the data is parsed and matches the test data.
@@ -238,10 +247,13 @@ fn test_wrong_size_candy_machine_account_fails() {
     let mut fbb = FlatBufferBuilder::new();
     let account_info =
         build_random_account_update(&mut fbb, &data).expect("Could not build account update");
+    let account_data = account_info
+        .data()
+        .expect("Failed to deserialize account data");
 
     // Use `CandyMachineParser` to parse the account update.
     let subject = CandyMachineParser {};
-    let result = subject.handle_account(&account_info);
+    let result = subject.handle_account(account_data.bytes());
 
     // Validate expected error.
     assert!(result.is_err());
@@ -271,10 +283,13 @@ fn test_basic_success_parsing_collection_pda_account() {
     let mut fbb = FlatBufferBuilder::new();
     let account_info =
         build_random_account_update(&mut fbb, &data).expect("Could not build account update");
+    let account_data = account_info
+        .data()
+        .expect("Failed to deserialize account data");
 
     // Use `CandyMachineParser` to parse the account update.
     let subject = CandyMachineParser {};
-    let result = subject.handle_account(&account_info);
+    let result = subject.handle_account(account_data.bytes());
     assert!(result.is_ok());
 
     // Check `ProgramParseResult` and make sure the data is parsed and matches the test data.
@@ -303,10 +318,13 @@ fn test_wrong_size_collection_pda_account_fails() {
     let mut fbb = FlatBufferBuilder::new();
     let account_info =
         build_random_account_update(&mut fbb, &data).expect("Could not build account update");
+    let account_data = account_info
+        .data()
+        .expect("Failed to deserialize account data");
 
     // Use `CandyMachineParser` to parse the account update.
     let subject = CandyMachineParser {};
-    let result = subject.handle_account(&account_info);
+    let result = subject.handle_account(account_data.bytes());
 
     // Validate expected error.
     assert!(result.is_err());
@@ -340,10 +358,13 @@ fn test_basic_success_parsing_freeze_pda_account() {
     let mut fbb = FlatBufferBuilder::new();
     let account_info =
         build_random_account_update(&mut fbb, &data).expect("Could not build account update");
+    let account_data = account_info
+        .data()
+        .expect("Failed to deserialize account data");
 
     // Use `CandyMachineParser` to parse the account update.
     let subject = CandyMachineParser {};
-    let result = subject.handle_account(&account_info);
+    let result = subject.handle_account(account_data.bytes());
     assert!(result.is_ok());
 
     // Check `ProgramParseResult` and make sure the data is parsed and matches the test data.
@@ -372,10 +393,13 @@ fn test_wrong_size_freeze_pda_account_fails() {
     let mut fbb = FlatBufferBuilder::new();
     let account_info =
         build_random_account_update(&mut fbb, &data).expect("Could not build account update");
+    let account_data = account_info
+        .data()
+        .expect("Failed to deserialize account data");
 
     // Use `CandyMachineParser` to parse the account update.
     let subject = CandyMachineParser {};
-    let result = subject.handle_account(&account_info);
+    let result = subject.handle_account(account_data.bytes());
 
     // Validate expected error.
     assert!(result.is_err());

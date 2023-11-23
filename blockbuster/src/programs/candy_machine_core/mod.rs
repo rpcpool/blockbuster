@@ -4,7 +4,6 @@ use crate::{
     programs::ProgramParseResult,
 };
 use mpl_candy_machine_core::CandyMachine;
-use plerkle_serialization::AccountInfo;
 use solana_sdk::{borsh0_10::try_from_slice_unchecked, pubkey::Pubkey, pubkeys};
 use std::convert::TryInto;
 
@@ -45,14 +44,8 @@ impl ProgramParser for CandyMachineParser {
     }
     fn handle_account(
         &self,
-        account_info: &AccountInfo,
+        account_data: &[u8],
     ) -> Result<Box<dyn ParseResult>, BlockbusterError> {
-        let account_data = if let Some(account_info) = account_info.data() {
-            account_info.iter().collect::<Vec<_>>()
-        } else {
-            return Err(BlockbusterError::DeserializationError);
-        };
-
         let discriminator: [u8; 8] = account_data[0..8].try_into().unwrap();
 
         let account_type = match discriminator {

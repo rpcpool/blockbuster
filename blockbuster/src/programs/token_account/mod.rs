@@ -3,7 +3,6 @@ use crate::{
     program_handler::{ParseResult, ProgramParser},
     programs::ProgramParseResult,
 };
-use plerkle_serialization::AccountInfo;
 use solana_sdk::{program_pack::Pack, pubkey::Pubkey, pubkeys};
 use spl_token::state::{Account as TokenAccount, Mint};
 
@@ -48,17 +47,11 @@ impl ProgramParser for TokenAccountParser {
     }
     fn handle_account(
         &self,
-        account_info: &AccountInfo,
+        account_data: &[u8],
     ) -> Result<Box<(dyn ParseResult + 'static)>, BlockbusterError> {
-        let account_data = if let Some(account_info) = account_info.data() {
-            account_info.iter().collect::<Vec<_>>()
-        } else {
-            return Ok(Box::new(TokenProgramAccount::EmptyAccount));
-        };
-
         let account_type = match account_data.len() {
             165 => {
-                let token_account = TokenAccount::unpack(&account_data).map_err(|_| {
+                let token_account = TokenAccount::unpack(account_data).map_err(|_| {
                     BlockbusterError::CustomDeserializationError(
                         "Token Account Unpack Failed".to_string(),
                     )
@@ -67,7 +60,7 @@ impl ProgramParser for TokenAccountParser {
                 TokenProgramAccount::TokenAccount(token_account)
             }
             82 => {
-                let mint = Mint::unpack(&account_data).map_err(|_| {
+                let mint = Mint::unpack(account_data).map_err(|_| {
                     BlockbusterError::CustomDeserializationError(
                         "Token MINT Unpack Failed".to_string(),
                     )
