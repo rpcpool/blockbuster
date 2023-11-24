@@ -49,27 +49,47 @@ pub fn parse_fb(
     }
 
     let mut meta_inner_instructions = vec![];
-    for ix in tx_info
-        .compiled_inner_instructions()
-        .expect("valid compiled_inner_instructions")
-    {
-        let mut instructions = vec![];
-        for ix in ix.instructions().expect("valid instructions") {
-            let cix = ix.compiled_instruction().expect("valid instruction");
-            instructions.push(InnerInstruction {
-                instruction: CompiledInstruction {
-                    program_id_index: cix.program_id_index(),
-                    accounts: cix.accounts().expect("valid accounts").bytes().to_vec(),
-                    data: cix.data().expect("valid data").bytes().to_vec(),
-                },
-                stack_height: Some(ix.stack_height() as u32),
+    if let Some(ixs) = tx_info.compiled_inner_instructions() {
+        for ix in ixs {
+            let mut instructions = vec![];
+            for ix in ix.instructions().expect("valid instructions") {
+                let cix = ix.compiled_instruction().expect("valid instruction");
+                instructions.push(InnerInstruction {
+                    instruction: CompiledInstruction {
+                        program_id_index: cix.program_id_index(),
+                        accounts: cix.accounts().expect("valid accounts").bytes().to_vec(),
+                        data: cix.data().expect("valid data").bytes().to_vec(),
+                    },
+                    stack_height: Some(ix.stack_height() as u32),
+                })
+            }
+
+            meta_inner_instructions.push(InnerInstructions {
+                index: ix.index(),
+                instructions,
             })
         }
+    } else if let Some(ixs) = tx_info.inner_instructions() {
+        for ix in ixs {
+            let mut instructions = vec![];
+            for cix in ix.instructions().expect("valid instructions") {
+                instructions.push(InnerInstruction {
+                    instruction: CompiledInstruction {
+                        program_id_index: cix.program_id_index(),
+                        accounts: cix.accounts().expect("valid accounts").bytes().to_vec(),
+                        data: cix.data().expect("valid data").bytes().to_vec(),
+                    },
+                    stack_height: Some(0),
+                })
+            }
 
-        meta_inner_instructions.push(InnerInstructions {
-            index: ix.index(),
-            instructions,
-        })
+            meta_inner_instructions.push(InnerInstructions {
+                index: ix.index(),
+                instructions,
+            })
+        }
+    } else {
+        panic!("expect valid compiled_inner_instructions/inner_instructions")
     }
 
     (account_keys, message_instructions, meta_inner_instructions)

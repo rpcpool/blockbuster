@@ -51,7 +51,11 @@ impl ProgramParser for CandyGuardParser {
         &self,
         account_data: &[u8],
     ) -> Result<Box<dyn ParseResult>, BlockbusterError> {
-        let discriminator: [u8; 8] = account_data[0..8].try_into().unwrap();
+        let discriminator: [u8; 8] = account_data
+            .get(0..8)
+            .ok_or(BlockbusterError::InvalidDataLength)?
+            .try_into()
+            .map_err(|_error| BlockbusterError::InvalidDataLength)?;
 
         let account_type = match discriminator {
             CANDY_GUARD_DISCRIMINATOR => {

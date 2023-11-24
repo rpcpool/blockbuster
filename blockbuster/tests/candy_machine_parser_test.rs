@@ -162,7 +162,7 @@ fn test_zero_length_data_fails() {
     assert!(result.is_err());
     if let Err(err) = result {
         match err {
-            BlockbusterError::DeserializationError => (),
+            BlockbusterError::InvalidDataLength => (),
             _ => panic!("Unexpected error: {}", err,),
         }
     }

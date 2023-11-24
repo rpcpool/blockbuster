@@ -67,17 +67,17 @@ pub fn order_instructions<'a>(
         {
             let kb = keys.borrow();
             let outer_ix_program_id_index = message_instruction.program_id_index as usize;
-            let outer_program_id = kb.get(outer_ix_program_id_index);
-            if outer_program_id.is_none() {
-                eprintln!("outer program id deserialization error");
-                continue;
-            }
-            let outer_program_id = outer_program_id.unwrap();
-            if programs.contains(outer_program_id) {
-                ordered_ixs.push_back((
-                    (*outer_program_id, message_instruction),
-                    Some(non_hoisted_inner_instruction),
-                ));
+
+            match kb.get(outer_ix_program_id_index) {
+                Some(outer_program_id) => {
+                    if programs.contains(outer_program_id) {
+                        ordered_ixs.push_back((
+                            (*outer_program_id, message_instruction),
+                            Some(non_hoisted_inner_instruction),
+                        ));
+                    }
+                }
+                None => eprintln!("outer program id deserialization error"),
             }
         }
     }
