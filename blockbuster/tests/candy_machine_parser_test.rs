@@ -20,11 +20,10 @@ use blockbuster::{
         ProgramParseResult,
     },
 };
-use helpers::{build_random_account_update, build_random_instruction, random_list, random_pubkey};
-use plerkle_serialization::root_as_compiled_instruction;
-
 use borsh::BorshSerialize;
 use flatbuffers::FlatBufferBuilder;
+use helpers::{build_random_account_update, build_random_instruction, random_list, random_pubkey};
+use plerkle_serialization::root_as_compiled_instruction;
 
 mod helpers;
 
@@ -119,12 +118,13 @@ fn test_unused_instruction_parsing() {
     let outer_ix = root_as_compiled_instruction(data).expect("Could not create random instruction");
 
     // Bundle the instruction with more random data.
+    let cix = helpers::parse_fb_cix(&outer_ix);
     let bundle = InstructionBundle {
         txn_id: "",
-        program: plerkle_serialization::Pubkey(random_pubkey().to_bytes()),
-        instruction: Some(outer_ix),
+        program: random_pubkey(),
+        instruction: Some(&cix),
         inner_ix: None,
-        keys: &[plerkle_serialization::Pubkey(random_pubkey().to_bytes())],
+        keys: &[random_pubkey()],
         slot: 0,
     };
 
@@ -151,7 +151,8 @@ fn test_zero_length_data_fails() {
         build_random_account_update(&mut fbb, data).expect("Could not build account update");
     let account_data = account_info
         .data()
-        .expect("Failed to deserialize account data");
+        // .expect("Failed to deserialize account data");
+        .unwrap_or_default();
 
     // Use `CandyMachineParser` to parse the account update.
     let subject = CandyMachineParser {};

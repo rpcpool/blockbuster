@@ -12,14 +12,14 @@ use blockbuster::{
 };
 use flatbuffers::FlatBufferBuilder;
 use helpers::*;
-use plerkle_serialization::{root_as_transaction_info, Pubkey as FBPubkey};
+use plerkle_serialization::root_as_transaction_info;
 use rand::prelude::IteratorRandom;
-use solana_sdk::pubkey::Pubkey;
 use spl_account_compression::events::{
     AccountCompressionEvent::{self},
     ApplicationDataEvent, ApplicationDataEventV1, ChangeLogEvent, ChangeLogEventV1,
 };
 use std::{collections::HashSet, env};
+
 #[test]
 fn test_filter() {
     let mut rng = rand::thread_rng();
@@ -30,19 +30,30 @@ fn test_filter() {
     let programs = get_programs(txn);
     let chosen_progs = programs.iter().choose_multiple(&mut rng, 3);
     let mut hs = HashSet::new();
-    chosen_progs.iter().fold(&mut hs, |hs, p| {
-        hs.insert(p.as_ref());
+    chosen_progs.into_iter().fold(&mut hs, |hs, p| {
+        hs.insert(*p);
         hs
     });
     let _len = hs.len();
     let hsb = hs.clone();
-    let res = order_instructions(hs, &txn);
+    let (account_keys, message_instructions, meta_inner_instructions) = helpers::parse_fb(&txn);
+    let res = order_instructions(
+        &hs,
+        &account_keys,
+        &message_instructions,
+        &meta_inner_instructions,
+    );
     for (ib, _inner) in res.iter() {
-        let public_key_matches = hsb.contains(&ib.0 .0.as_ref());
+        let public_key_matches = hsb.contains(&ib.0);
         assert!(public_key_matches);
     }
 
-    let res = order_instructions(HashSet::new(), &txn);
+    let res = order_instructions(
+        &HashSet::new(),
+        &account_keys,
+        &message_instructions,
+        &meta_inner_instructions,
+    );
     assert_eq!(res.len(), 0);
 }
 
@@ -58,34 +69,33 @@ fn helium_nested() {
     let fbb = FlatBufferBuilder::new();
     let txn = prepare_fixture(fbb, "helium_nested");
     let txn = root_as_transaction_info(txn.finished_data()).expect("Fail deser");
-    let mut prog = HashSet::new();
+    let mut programs = HashSet::new();
     let id = mpl_bubblegum::ID;
     let slot = txn.slot();
-    prog.insert(id.as_ref());
-    let res = order_instructions(prog, &txn);
-    let accounts = txn.account_keys().unwrap();
-    let mut keys: Vec<FBPubkey> = Vec::with_capacity(accounts.len());
-    for k in accounts.into_iter() {
-        keys.push(*k);
-    }
+    programs.insert(id);
+    let (account_keys, message_instructions, meta_inner_instructions) = helpers::parse_fb(&txn);
+    let res = order_instructions(
+        &programs,
+        &account_keys,
+        &message_instructions,
+        &meta_inner_instructions,
+    );
 
     let _ix = 0;
 
-    let contains = res
-        .iter()
-        .any(|(ib, _inner)| ib.0 .0.as_ref() == mpl_bubblegum::ID.as_ref());
+    let contains = res.iter().any(|(ib, _inner)| ib.0 == mpl_bubblegum::ID);
     assert!(contains, "Must containe bgum at hoisted root");
     let subject = BubblegumParser {};
     for (outer_ix, inner_ix) in res.into_iter() {
         let (program, instruction) = outer_ix;
-        let ix_accounts = instruction.accounts().unwrap().iter().collect::<Vec<_>>();
+        let ix_accounts = &instruction.accounts;
         let ix_account_len = ix_accounts.len();
         let _max = ix_accounts.iter().max().copied().unwrap_or(0) as usize;
         let ix_accounts =
             ix_accounts
                 .iter()
                 .fold(Vec::with_capacity(ix_account_len), |mut acc, a| {
-                    if let Some(key) = keys.get(*a as usize) {
+                    if let Some(key) = account_keys.get(*a as usize) {
                         acc.push(*key);
                     }
                     //else case here is handled on 272
@@ -124,27 +134,26 @@ fn test_double_mint() {
     let txn = root_as_transaction_info(txn.finished_data()).expect("Fail deser");
     let mut programs = HashSet::new();
     let subject = BubblegumParser {}.key();
-    programs.insert(subject.as_ref());
-    let ix = order_instructions(programs, &txn);
+    programs.insert(subject);
+    let (account_keys, message_instructions, meta_inner_instructions) = helpers::parse_fb(&txn);
+    let ix = order_instructions(
+        &programs,
+        &account_keys,
+        &message_instructions,
+        &meta_inner_instructions,
+    );
     assert_eq!(ix.len(), 2);
-    let contains = ix
-        .iter()
-        .filter(|(ib, _inner)| ib.0 .0.as_ref() == mpl_bubblegum::ID.as_ref());
+    let contains = ix.iter().filter(|(ib, _inner)| ib.0 == mpl_bubblegum::ID);
     let mut count = 0;
     contains.for_each(|bix| {
         count += 1;
         if let Some(inner) = &bix.1 {
             println!("{}", inner.len());
             for ii in inner {
-                println!(
-                    "pp{} {:?}",
-                    count,
-                    Pubkey::try_from(ii.0 .0.as_ref()).unwrap()
-                );
+                println!("pp{} {:?}", count, ii.0);
             }
             println!("------");
-            let cl = AccountCompressionEvent::try_from_slice(inner[1].1.data().unwrap().bytes())
-                .unwrap();
+            let cl = AccountCompressionEvent::try_from_slice(&inner[1].1.data).unwrap();
             if let AccountCompressionEvent::ApplicationData(ApplicationDataEvent::V1(
                 ApplicationDataEventV1 { application_data },
             )) = cl
@@ -152,8 +161,7 @@ fn test_double_mint() {
                 let lse = LeafSchemaEvent::try_from_slice(&application_data).unwrap();
                 println!("1 pp{} NONCE {:?}\n end", count, lse.schema.nonce());
             }
-            let cl = AccountCompressionEvent::try_from_slice(inner[3].1.data().unwrap().bytes())
-                .unwrap();
+            let cl = AccountCompressionEvent::try_from_slice(&inner[3].1.data).unwrap();
             if let AccountCompressionEvent::ChangeLog(ChangeLogEvent::V1(ChangeLogEventV1 {
                 id,
                 ..
@@ -173,24 +181,23 @@ fn test_double_tree() {
     let txn = root_as_transaction_info(txn.finished_data()).expect("Fail deser");
     let mut programs = HashSet::new();
     let subject = BubblegumParser {}.key();
-    programs.insert(subject.as_ref());
-    let ix = order_instructions(programs, &txn);
-    let contains = ix
-        .iter()
-        .filter(|(ib, _inner)| ib.0 .0.as_ref() == mpl_bubblegum::ID.as_ref());
+    programs.insert(subject);
+    let (account_keys, message_instructions, meta_inner_instructions) = helpers::parse_fb(&txn);
+    let ix = order_instructions(
+        &programs,
+        &account_keys,
+        &message_instructions,
+        &meta_inner_instructions,
+    );
+    let contains = ix.iter().filter(|(ib, _inner)| ib.0 == mpl_bubblegum::ID);
     let mut count = 0;
     contains.for_each(|bix| {
         if let Some(inner) = &bix.1 {
             for ii in inner {
-                println!(
-                    "pp{} {:?}",
-                    count,
-                    Pubkey::try_from(ii.0 .0.as_ref()).unwrap()
-                );
+                println!("pp{} {:?}", count, ii.0);
             }
             println!("------");
-            let cl = AccountCompressionEvent::try_from_slice(inner[1].1.data().unwrap().bytes())
-                .unwrap();
+            let cl = AccountCompressionEvent::try_from_slice(&inner[1].1.data).unwrap();
             if let AccountCompressionEvent::ApplicationData(ApplicationDataEvent::V1(
                 ApplicationDataEventV1 { application_data },
             )) = cl
@@ -198,8 +205,7 @@ fn test_double_tree() {
                 let lse = LeafSchemaEvent::try_from_slice(&application_data).unwrap();
                 println!("1 pp{} NONCE {:?}\n end", count, lse.schema.nonce());
             }
-            let cl = AccountCompressionEvent::try_from_slice(inner[3].1.data().unwrap().bytes())
-                .unwrap();
+            let cl = AccountCompressionEvent::try_from_slice(&inner[3].1.data).unwrap();
             if let AccountCompressionEvent::ChangeLog(ChangeLogEvent::V1(ChangeLogEventV1 {
                 id,
                 ..

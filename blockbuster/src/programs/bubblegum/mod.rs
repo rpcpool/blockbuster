@@ -1,13 +1,11 @@
-use log::warn;
-
 use crate::{
     error::BlockbusterError,
     instruction::InstructionBundle,
-    program_handler::{ParseResult, ProgramParser},
+    program_handler::{NotUsed, ParseResult, ProgramParser},
+    programs::ProgramParseResult,
 };
-
-use crate::{program_handler::NotUsed, programs::ProgramParseResult};
 use borsh::de::BorshDeserialize;
+use log::warn;
 use mpl_bubblegum::{
     get_instruction_type,
     instructions::UpdateMetadataInstructionArgs,
@@ -19,7 +17,6 @@ pub use spl_account_compression::events::{
     AccountCompressionEvent::{self, ApplicationData, ChangeLog},
     ApplicationDataEvent, ChangeLogEvent, ChangeLogEventV1,
 };
-
 use spl_noop;
 
 #[derive(Eq, PartialEq)]
@@ -114,63 +111,47 @@ impl ProgramParser for BubblegumParser {
             ..
         } = bundle;
         let outer_ix_data = match instruction {
-            Some(compiled_ix) if compiled_ix.data().is_some() => {
-                let data = compiled_ix.data().unwrap();
-                data.iter().collect::<Vec<_>>()
-            }
-            _ => {
-                return Err(BlockbusterError::DeserializationError);
-            }
+            Some(cix) => cix.data.as_ref(),
+            _ => return Err(BlockbusterError::DeserializationError),
         };
-        let ix_type = get_instruction_type(&outer_ix_data);
+        let ix_type = get_instruction_type(outer_ix_data);
         let mut b_inst = BubblegumInstruction::new(ix_type);
         if let Some(ixs) = inner_ix {
-            for ix in ixs {
-                if ix.0 .0 == spl_noop::id().to_bytes() {
-                    let cix = ix.1;
-                    if let Some(inner_ix_data) = cix.data() {
-                        let inner_ix_data = inner_ix_data.iter().collect::<Vec<_>>();
-                        if !inner_ix_data.is_empty() {
-                            match AccountCompressionEvent::try_from_slice(&inner_ix_data) {
-                                Ok(result) => match result {
-                                    ChangeLog(changelog_event) => {
-                                        let ChangeLogEvent::V1(changelog_event) = changelog_event;
-                                        b_inst.tree_update = Some(changelog_event);
-                                    }
-                                    ApplicationData(app_data) => {
-                                        let ApplicationDataEvent::V1(app_data) = app_data;
-                                        let app_data = app_data.application_data;
+            for (pid, cix) in ixs {
+                if pid == &spl_noop::id() && !cix.data.is_empty() {
+                    match AccountCompressionEvent::try_from_slice(&cix.data) {
+                        Ok(result) => match result {
+                            ChangeLog(changelog_event) => {
+                                let ChangeLogEvent::V1(changelog_event) = changelog_event;
+                                b_inst.tree_update = Some(changelog_event);
+                            }
+                            ApplicationData(app_data) => {
+                                let ApplicationDataEvent::V1(app_data) = app_data;
+                                let app_data = app_data.application_data;
 
-                                        let event_type_byte = if !app_data.is_empty() {
-                                            &app_data[0..1]
-                                        } else {
-                                            return Err(BlockbusterError::DeserializationError);
-                                        };
+                                let event_type_byte = if !app_data.is_empty() {
+                                    &app_data[0..1]
+                                } else {
+                                    return Err(BlockbusterError::DeserializationError);
+                                };
 
-                                        match BubblegumEventType::try_from_slice(event_type_byte)? {
-                                            BubblegumEventType::Uninitialized => {
-                                                return Err(
-                                                    BlockbusterError::MissingBubblegumEventData,
-                                                );
-                                            }
-                                            BubblegumEventType::LeafSchemaEvent => {
-                                                b_inst.leaf_update = Some(
-                                                    LeafSchemaEvent::try_from_slice(&app_data)?,
-                                                );
-                                            }
-                                        }
+                                match BubblegumEventType::try_from_slice(event_type_byte)? {
+                                    BubblegumEventType::Uninitialized => {
+                                        return Err(BlockbusterError::MissingBubblegumEventData);
                                     }
-                                },
-                                Err(e) => {
-                                    warn!(
-                                        "Error while deserializing txn {:?} with noop data: {:?}",
-                                        txn_id, e
-                                    );
+                                    BubblegumEventType::LeafSchemaEvent => {
+                                        b_inst.leaf_update =
+                                            Some(LeafSchemaEvent::try_from_slice(&app_data)?);
+                                    }
                                 }
                             }
+                        },
+                        Err(e) => {
+                            warn!(
+                                "Error while deserializing txn {:?} with noop data: {:?}",
+                                txn_id, e
+                            );
                         }
-                    } else {
-                        return Err(BlockbusterError::InstructionParsingError);
                     }
                 }
             }
@@ -214,7 +195,7 @@ impl ProgramParser for BubblegumParser {
                         b_inst.payload = Some(build_collection_verification_payload(keys, false)?);
                     }
                     InstructionName::UpdateMetadata => {
-                        let args = UpdateMetadataInstructionArgs::try_from_slice(&outer_ix_data)?;
+                        let args = UpdateMetadataInstructionArgs::try_from_slice(outer_ix_data)?;
                         b_inst.payload = Some(Payload::UpdateMetadata {
                             current_metadata: args.current_metadata,
                             update_args: args.update_args,
@@ -232,30 +213,24 @@ impl ProgramParser for BubblegumParser {
 // See Bubblegum documentation for offsets and positions:
 // https://github.com/metaplex-foundation/mpl-bubblegum/blob/main/programs/bubblegum/README.md#-verify_creator-and-unverify_creator
 fn build_creator_verification_payload(
-    keys: &[plerkle_serialization::Pubkey],
+    keys: &[Pubkey],
     verify: bool,
 ) -> Result<Payload, BlockbusterError> {
-    let creator = keys
+    let creator = *keys
         .get(5)
-        .ok_or(BlockbusterError::InstructionParsingError)?
-        .0;
-    Ok(Payload::CreatorVerification {
-        creator: Pubkey::new_from_array(creator),
-        verify,
-    })
+        .ok_or(BlockbusterError::InstructionParsingError)?;
+    Ok(Payload::CreatorVerification { creator, verify })
 }
 
 // See Bubblegum for offsets and positions:
 // https://github.com/metaplex-foundation/mpl-bubblegum/blob/main/programs/bubblegum/README.md#-verify_collection-unverify_collection-and-set_and_verify_collection
 // This uses the account.  The collection is only provided as an argument for `set_and_verify_collection`.
 fn build_collection_verification_payload(
-    keys: &[plerkle_serialization::Pubkey],
+    keys: &[Pubkey],
     verify: bool,
 ) -> Result<Payload, BlockbusterError> {
-    let collection_raw = keys
+    let collection = *keys
         .get(8)
-        .ok_or(BlockbusterError::InstructionParsingError)?
-        .0;
-    let collection: Pubkey = Pubkey::try_from_slice(&collection_raw)?;
+        .ok_or(BlockbusterError::InstructionParsingError)?;
     Ok(Payload::CollectionVerification { collection, verify })
 }

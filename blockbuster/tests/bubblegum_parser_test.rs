@@ -11,7 +11,6 @@ use mpl_bubblegum::{
     types::{BubblegumEventType, Creator, LeafSchema, MetadataArgs, TokenProgramVersion, Version},
     LeafSchemaEvent,
 };
-use plerkle_serialization::Pubkey;
 use spl_account_compression::{
     events::{AccountCompressionEvent, ChangeLogEvent},
     state::PathNode,
@@ -31,15 +30,7 @@ fn test_mint() {
     let subject = BubblegumParser {};
 
     let accounts = random_list_of(9, |_i| random_pubkey());
-    let fb_accounts: Vec<Pubkey> = accounts
-        .iter()
-        .map(|account| Pubkey(account.to_bytes()))
-        .collect();
-    let fb_account_indexes: Vec<u8> = fb_accounts
-        .iter()
-        .enumerate()
-        .map(|(i, _)| i as u8)
-        .collect();
+    let account_indexes: Vec<u8> = accounts.iter().enumerate().map(|(i, _)| i as u8).collect();
 
     let metadata = MetadataArgs {
         name: "test".to_string(),
@@ -112,8 +103,8 @@ fn test_mint() {
         &mut fbb2,
         &mut fbb3,
         &mut fbb4,
-        &fb_accounts,
-        &fb_account_indexes,
+        &accounts,
+        &account_indexes,
         &ix_data,
         lse,
         cs_event,
@@ -141,15 +132,7 @@ fn test_basic_success_parsing() {
     let subject = BubblegumParser {};
 
     let accounts = random_list_of(8, |_i| random_pubkey());
-    let fb_accounts: Vec<Pubkey> = accounts
-        .iter()
-        .map(|account| Pubkey(account.to_bytes()))
-        .collect();
-    let fb_account_indexes: Vec<u8> = fb_accounts
-        .iter()
-        .enumerate()
-        .map(|(i, _)| i as u8)
-        .collect();
+    let account_indexes: Vec<u8> = accounts.iter().enumerate().map(|(i, _)| i as u8).collect();
 
     // We are only using this to get the instruction data, so the accounts don't actually matter
     // here.
@@ -210,8 +193,8 @@ fn test_basic_success_parsing() {
         &mut fbb2,
         &mut fbb3,
         &mut fbb4,
-        &fb_accounts,
-        &fb_account_indexes,
+        &accounts,
+        &account_indexes,
         &ix_data,
         lse,
         cs_event,
