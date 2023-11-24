@@ -1,9 +1,6 @@
 use solana_sdk::{instruction::CompiledInstruction, pubkey::Pubkey};
 use solana_transaction_status::InnerInstructions;
-use std::{
-    cell::RefCell,
-    collections::{HashSet, VecDeque},
-};
+use std::collections::{HashSet, VecDeque};
 
 pub type IxPair<'a> = (Pubkey, &'a CompiledInstruction);
 
@@ -37,9 +34,6 @@ pub fn order_instructions<'a>(
 ) -> VecDeque<(IxPair<'a>, Option<Vec<IxPair<'a>>>)> {
     let mut ordered_ixs: VecDeque<(IxPair, Option<Vec<IxPair>>)> = VecDeque::new();
 
-    // Get account keys.
-    let keys = RefCell::new(account_keys.to_vec());
-
     // Get inner instructions.
     for (outer_instruction_index, message_instruction) in message_instructions.iter().enumerate() {
         let non_hoisted_inner_instruction = meta_inner_instructions
@@ -49,9 +43,8 @@ pub fn order_instructions<'a>(
                 ix.instructions
                     .iter()
                     .map(|ix| {
-                        let kb = keys.borrow();
                         let cix = &ix.instruction;
-                        (kb[cix.program_id_index as usize], cix)
+                        (account_keys[cix.program_id_index as usize], cix)
                     })
                     .collect::<Vec<IxPair>>()
             })
@@ -64,21 +57,17 @@ pub fn order_instructions<'a>(
             ordered_ixs.push_back(h);
         }
 
-        {
-            let kb = keys.borrow();
-            let outer_ix_program_id_index = message_instruction.program_id_index as usize;
-
-            match kb.get(outer_ix_program_id_index) {
-                Some(outer_program_id) => {
-                    if programs.contains(outer_program_id) {
-                        ordered_ixs.push_back((
-                            (*outer_program_id, message_instruction),
-                            Some(non_hoisted_inner_instruction),
-                        ));
-                    }
+        let outer_ix_program_id_index = message_instruction.program_id_index as usize;
+        match account_keys.get(outer_ix_program_id_index) {
+            Some(outer_program_id) => {
+                if programs.contains(outer_program_id) {
+                    ordered_ixs.push_back((
+                        (*outer_program_id, message_instruction),
+                        Some(non_hoisted_inner_instruction),
+                    ));
                 }
-                None => eprintln!("outer program id deserialization error"),
             }
+            None => eprintln!("outer program id deserialization error"),
         }
     }
     ordered_ixs
